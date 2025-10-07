@@ -104,4 +104,5 @@ async def on_connect():
     asyncio.create_task(start_webserver())
 
 # Rodar o bot
-bot.run("SEU_TOKEN_DO_DISCORD")
+import os
+bot.run(os.getenv("DISCORD_TOKEN"))
