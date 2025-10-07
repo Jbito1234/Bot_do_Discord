@@ -178,4 +178,4 @@ async def on_ready():
         )
 
 # Inicia o bot com o ÚNICO TOKEN
-bot.run(TOKEN)
+bot.run(os.getenv('DISCORD_TOKEN'))
