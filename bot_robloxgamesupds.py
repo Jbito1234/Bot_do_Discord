@@ -26,8 +26,11 @@ CONFIGURACOES = [
     }
 ]
 
+# --- Intents corrigidas ---
 intents = discord.Intents.default()
+intents.guilds = True  # Necessário para fetch_channel
 bot = discord.Bot(intents=intents)
+
 translator = Translator()
 current_post_ids_cache = {}  # Cache de posts já enviados
 
@@ -76,10 +79,15 @@ async def verificar_atualizacoes(game_id, channel_id, interval):
         current_post_ids_cache[game_id] = set()
 
     await bot.wait_until_ready()
-    canal = bot.get_channel(channel_id)
+    
+    try:
+        canal = await bot.fetch_channel(channel_id)
+    except Exception as e:
+        print(f"Erro ao buscar canal {channel_id}: {e}")
+        return
+
     if canal is None:
-        print(f"Canal {channel_id} para o jogo {game_id} não encontrado.")
-        await asyncio.sleep(interval)
+        print(f"Canal {channel_id} não encontrado.")
         return
 
     # Preencher cache na primeira execução
@@ -113,7 +121,10 @@ async def verificar_atualizacoes(game_id, channel_id, interval):
                 embed.set_image(url=post["imagem"])
             embed.set_footer(text=f"Publicado em: {post['data']}")
 
-            await canal.send(embed=embed)
+            try:
+                await canal.send(embed=embed)
+            except Exception as e:
+                print(f"Erro ao enviar embed para canal {channel_id}: {e}")
             await asyncio.sleep(5)
 
         if novas_para_enviar:
@@ -132,6 +143,7 @@ async def on_ready():
             config["CHANNEL_ID"],
             config["INTERVALO"]
         ))
+
 
 # Executa o bot
 bot.run(os.getenv('DISCORD_TOKEN'))
