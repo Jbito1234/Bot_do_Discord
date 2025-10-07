@@ -4,22 +4,26 @@ import asyncio
 from googletrans import Translator
 
 # --- 1. Informações de Configuração Global ---
-# O token do seu bot (ÚNICO para todas as verificações)
-TOKEN = "SEU_TOKEN_DO_BOT" 
 
 # Lista de configurações: Adicione quantos jogos você quiser aqui!
 CONFIGURACOES = [
     {
-        "GAME_ID": "111111111",      # ID do primeiro jogo no Roblox
-        "CHANNEL_ID": 123456789,     # ID do canal para as notas do Jogo A
-        "NOME": "Jogo A",
-        "INTERVALO": 20              # Intervalo de checagem em segundos (20s)
+        "GAME_ID": "109983668079237",
+        "CHANNEL_ID": 1425085470144204861,
+        "NOME": "Roube um Brainrot",
+        "INTERVALO": 60
     },
     {
-        "GAME_ID": "222222222",      # ID do segundo jogo no Roblox
-        "CHANNEL_ID": 987654321,     # ID do canal para as notas do Jogo B
-        "NOME": "Jogo B",
-        "INTERVALO": 30              # Intervalo de checagem em segundos (30s)
+        "GAME_ID": "127742093697776",
+        "CHANNEL_ID": 1425086215643725834,
+        "NOME": "Plantas VS Brainrots",
+        "INTERVALO": 60
+    },
+    {
+        "GAME_ID": "108533757090220",
+        "CHANNEL_ID": 1425086490379161671,
+        "NOME": "Garden Tower Defense",
+        "INTERVALO": 60
     }
     # Adicione mais objetos de configuração aqui, seguindo o padrão acima.
 ]
