@@ -1,34 +1,46 @@
 import discord
-from discord.ext import tasks
 import requests
 import asyncio
 from googletrans import Translator
 
-# --- Informações de Configuração ---
-# O ID do seu jogo no Roblox (Universe ID ou Place ID, dependendo da API)
-GAME_ID = "123456789" 
-# O ID do canal onde as atualizações serão postadas
-CHANNEL_ID = 123456789 
+# --- 1. Informações de Configuração Global ---
+# O token do seu bot (ÚNICO para todas as verificações)
+TOKEN = "SEU_TOKEN_DO_BOT" 
+
+# Lista de configurações: Adicione quantos jogos você quiser aqui!
+CONFIGURACOES = [
+    {
+        "GAME_ID": "111111111",      # ID do primeiro jogo no Roblox
+        "CHANNEL_ID": 123456789,     # ID do canal para as notas do Jogo A
+        "NOME": "Jogo A",
+        "INTERVALO": 20              # Intervalo de checagem em segundos (20s)
+    },
+    {
+        "GAME_ID": "222222222",      # ID do segundo jogo no Roblox
+        "CHANNEL_ID": 987654321,     # ID do canal para as notas do Jogo B
+        "NOME": "Jogo B",
+        "INTERVALO": 30              # Intervalo de checagem em segundos (30s)
+    }
+    # Adicione mais objetos de configuração aqui, seguindo o padrão acima.
+]
 # -----------------------------------
 
 intents = discord.Intents.default()
 bot = discord.Bot(intents=intents)
 translator = Translator()
 
-# Usar um conjunto para um check rápido de IDs
-current_post_ids = set() 
-# Usar um cache simples para armazenar as postagens reais (opcional)
-cached_posts = []
+# Dicionário para armazenar os IDs de postagens vistas, separadamente para cada jogo.
+# A chave é o GAME_ID.
+current_post_ids_cache = {} 
 
-async def fetch_posts():
+
+async def fetch_posts(game_id):
     """Busca as últimas postagens de atualização/evento do Roblox e as traduz."""
-    url = f"https://games.roblox.com/v1/games/{GAME_ID}/universe-updates?sortOrder=Desc&limit=20"
+    url = f"https://games.roblox.com/v1/games/{game_id}/universe-updates?sortOrder=Desc&limit=20"
     try:
-        # Nota: requests.get() é síncrono. Em um ambiente de produção pesado, 
-        # aiohttp seria melhor, mas requests é mantido conforme a base do seu código.
         r = requests.get(url)
         if r.status_code != 200:
-            print(f"Erro ao buscar posts: Status {r.status_code}")
+            print(f"Erro ao buscar posts para o Jogo {game_id}: Status {r.status_code}")
             return []
             
         data = r.json().get("data", [])
@@ -39,12 +51,12 @@ async def fetch_posts():
             # Determina o tipo de postagem e cor
             if "event" in title_lower or "evento" in title_lower:
                 post_type = "🎉 Evento"
-                embed_color = discord.Color.gold() # Amarelo/Dourado para Evento
+                embed_color = discord.Color.gold()
             else:
                 post_type = "🔧 Atualização"
-                embed_color = discord.Color.blue() # Azul para Atualização
+                embed_color = discord.Color.blue()
 
-            # Traduz a descrição para português (chamada síncrona)
+            # Traduz a descrição para português
             descricao_pt = translator.translate(post.get("body", ""), src='en', dest='pt').text
             
             posts.append({
@@ -58,54 +70,52 @@ async def fetch_posts():
             })
         return posts
     except Exception as e:
-        print("Erro ao pegar postagens:", e)
+        print(f"Erro ao pegar postagens para {game_id}:", e)
         return []
 
-async def verificar_atualizacoes():
-    """Verifica e publica novas atualizações no canal do Discord."""
-    global current_post_ids
-    global cached_posts
+async def verificar_atualizacoes(game_id, channel_id, interval):
+    """Verifica e publica novas atualizações para um jogo e canal específicos."""
+    
+    # Garante que o set de IDs para este jogo exista
+    if game_id not in current_post_ids_cache:
+        current_post_ids_cache[game_id] = set()
     
     await bot.wait_until_ready()
-    canal = bot.get_channel(CHANNEL_ID)
+    canal = bot.get_channel(channel_id)
     
     if canal is None:
-        print("Canal não encontrado ou bot ainda não está pronto para acessar canais.")
-        # --- A pausa (sleep) que você solicitou antes (caso o canal não exista) ---
+        print(f"Canal {channel_id} para o jogo {game_id} não encontrado.")
+        # Pausa e retorna se o canal não for encontrado
         print("sleep")
-        await asyncio.sleep(20)
-        # --- Fim da pausa (sleep) que você solicitou antes ---
+        await asyncio.sleep(interval)
         return
 
-    # Se for a primeira execução, preenche o cache sem enviar mensagens
-    if not current_post_ids:
-        print("Primeira execução: Preenchendo cache de posts existentes...")
-        initial_posts = await fetch_posts()
-        current_post_ids = {post['id'] for post in initial_posts}
-        cached_posts = initial_posts
-        print(f"Cache preenchido com {len(current_post_ids)} postagens iniciais.")
-        await asyncio.sleep(20) # Coloca um pequeno sleep inicial
-        # --- A pausa (sleep) que você solicitou antes ---
+    # --- Lógica Inicial (Preenchimento do Cache) ---
+    if not current_post_ids_cache[game_id]:
+        print(f"[{game_id}] Primeira execução: Preenchendo cache de posts existentes...")
+        initial_posts = await fetch_posts(game_id)
+        current_post_ids_cache[game_id] = {post['id'] for post in initial_posts}
+        print(f"[{game_id}] Cache preenchido com {len(current_post_ids_cache[game_id])} postagens iniciais.")
+        
+        # Pausa conforme regra de 'sleep'
         print("sleep")
-        await asyncio.sleep(20)
-        # --- Fim da pausa (sleep) que você solicitou antes ---
+        await asyncio.sleep(interval)
         return 
 
+    # --- Loop de Checagem Contínua ---
     while True:
-        novas_postagens = await fetch_posts()
-        
+        novas_postagens = await fetch_posts(game_id)
         novas_para_enviar = []
         
-        # Encontra os posts que são novos desde a última verificação
+        # Encontra as postagens novas
         for post in reversed(novas_postagens):
-            if post['id'] not in current_post_ids:
+            if post['id'] not in current_post_ids_cache[game_id]:
                 novas_para_enviar.append(post)
 
         # Envia as novas postagens
         for post in novas_para_enviar:
             
-            # --- Personalização do Design Inspirada na Imagem ---
-            
+            # --- Formatação do Design Inspirado na Imagem ---
             descricao_formatada = ""
             linhas_desc = post["descricao"].split('\n')
             
@@ -114,59 +124,58 @@ async def verificar_atualizacoes():
                 descricao_formatada = post["descricao"][:800] + "..."
                 descricao_formatada = f"{post['tipo'].split(' ')[1]}:\n" + \
                                       f"{descricao_formatada}\n\n" + \
-                                      f"... {len(linhas_desc)} Pontos de Notas!\n"
+                                      f"... Pontos de Notas!\n"
             else:
-                # Formata como lista numerada para simular o estilo de "regras"
                 for i, linha in enumerate(linhas_desc):
-                    if linha.strip(): # Ignora linhas vazias
+                    if linha.strip():
                         descricao_formatada += f"{i+1}.** {linha.strip()}\n"
                 
                 if len(descricao_formatada) > 4096:
                     descricao_formatada = descricao_formatada[:4000] + "\n*(Descrição cortada...)*"
             
-            # Cria o Embed com o estilo da imagem
+            # Cria o Embed (sem set_author, para que o bot apareça como remetente padrão)
             embed = discord.Embed(
-                # Título semelhante ao cabeçalho da imagem: "# 📕 | rules!"
-                title=f"#{'🔧' if post['tipo'].startswith('Atualização') else '🎉'} | Notas de {post['tipo'].split(' ')[1]}!",
+                title=f"#{'🔧' if post['tipo'].startswith('Atualização') else '🎉'} | Notas de {post['tipo'].split(' ')[1]} - {game_id}!",
                 description=f"*Bem-vindo(a) a* {post['tipo']} *| {post['titulo']}*\n\n" + 
                             descricao_formatada,
                 color=post['cor']
             )
             
-            # O set_author FOI REMOVIDO. O cabeçalho padrão do Discord mostrará que seu bot enviou.
-            
-            # Adiciona a imagem de thumbnail, se houver
             if post["imagem"]:
                 embed.set_image(url=post["imagem"])
                 
-            # Adiciona o footer com a data
             embed.set_footer(text=f"Publicado em: {post['data']}")
             
-            # Envia a mensagem
             await canal.send(embed=embed)
             
-            # Adiciona um pequeno sleep entre o envio das notas (conforme sua regra)
-            # --- A pausa (sleep) que você solicitou entre as notas ---
+            # --- Pausa entre o envio das notas (Regra do Usuário) ---
             print("sleep")
             await asyncio.sleep(5) 
-            # --- Fim da pausa (sleep) que você solicitou entre as notas ---
+            # -----------------------------------------------------------
 
-        # Atualiza o cache e os IDs após processar todas as novas postagens
+        # Atualiza o cache de IDs
         if novas_para_enviar:
-            current_post_ids.update({post['id'] for post in novas_para_enviar})
-            cached_posts = novas_postagens 
+            current_post_ids_cache[game_id].update({post['id'] for post in novas_para_enviar})
 
-        # --- A pausa (sleep) que você solicitou antes ---
+        # --- Pausa no final do loop principal ---
         print("sleep")
-        await asyncio.sleep(20)
-        # --- Fim da pausa (sleep) que você solicitou antes ---
+        await asyncio.sleep(interval)
 
 
 @bot.event
 async def on_ready():
     print(f"Bot conectado como {bot.user}")
-    # Inicia a tarefa de verificação
-    bot.loop.create_task(verificar_atualizacoes())
+    
+    # Inicia uma tarefa assíncrona para CADA jogo na configuração
+    for config in CONFIGURACOES:
+        print(f"Iniciando monitoramento para {config['NOME']} ({config['GAME_ID']}) no Canal {config['CHANNEL_ID']}")
+        bot.loop.create_task(
+            verificar_atualizacoes(
+                config["GAME_ID"], 
+                config["CHANNEL_ID"], 
+                config["INTERVALO"]
+            )
+        )
 
-# Garanta que o bot_token seja o primeiro argumento no método run
-bot.run(os.getenv('DISCORD_TOKEN'))
+# Inicia o bot com o ÚNICO TOKEN
+bot.run(TOKEN)
