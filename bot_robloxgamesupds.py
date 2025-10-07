@@ -8,7 +8,7 @@ from googletrans import Translator
 # Lista de configurações: Adicione quantos jogos você quiser aqui!
 CONFIGURACOES = [
     {
-        "GAME_ID": "109983668079237",
+        "GAME_ID": "8752798054",
         "CHANNEL_ID": 1425085470144204861,
         "NOME": "Roube um Brainrot",
         "INTERVALO": 60
