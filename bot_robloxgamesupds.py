@@ -169,4 +169,4 @@ async def on_ready():
     bot.loop.create_task(verificar_atualizacoes())
 
 # Garanta que o bot_token seja o primeiro argumento no método run
-bot.run(TOKEN)
+bot.run(os.getenv('DISCORD_TOKEN'))
