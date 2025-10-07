@@ -1,1 +1,172 @@
+import discord
+from discord.ext import tasks
+import requests
+import asyncio
+from googletrans import Translator
 
+# --- Informações de Configuração ---
+# O ID do seu jogo no Roblox (Universe ID ou Place ID, dependendo da API)
+GAME_ID = "123456789" 
+# O ID do canal onde as atualizações serão postadas
+CHANNEL_ID = 123456789 
+# -----------------------------------
+
+intents = discord.Intents.default()
+bot = discord.Bot(intents=intents)
+translator = Translator()
+
+# Usar um conjunto para um check rápido de IDs
+current_post_ids = set() 
+# Usar um cache simples para armazenar as postagens reais (opcional)
+cached_posts = []
+
+async def fetch_posts():
+    """Busca as últimas postagens de atualização/evento do Roblox e as traduz."""
+    url = f"https://games.roblox.com/v1/games/{GAME_ID}/universe-updates?sortOrder=Desc&limit=20"
+    try:
+        # Nota: requests.get() é síncrono. Em um ambiente de produção pesado, 
+        # aiohttp seria melhor, mas requests é mantido conforme a base do seu código.
+        r = requests.get(url)
+        if r.status_code != 200:
+            print(f"Erro ao buscar posts: Status {r.status_code}")
+            return []
+            
+        data = r.json().get("data", [])
+        posts = []
+        for post in data:
+            title_lower = post.get("title", "").lower()
+            
+            # Determina o tipo de postagem e cor
+            if "event" in title_lower or "evento" in title_lower:
+                post_type = "🎉 Evento"
+                embed_color = discord.Color.gold() # Amarelo/Dourado para Evento
+            else:
+                post_type = "🔧 Atualização"
+                embed_color = discord.Color.blue() # Azul para Atualização
+
+            # Traduz a descrição para português (chamada síncrona)
+            descricao_pt = translator.translate(post.get("body", ""), src='en', dest='pt').text
+            
+            posts.append({
+                "id": post.get("id"),
+                "titulo": post.get("title"),
+                "descricao": descricao_pt,
+                "data": post.get("created"),
+                "imagem": post.get("thumbnailUrl"),
+                "tipo": post_type,
+                "cor": embed_color
+            })
+        return posts
+    except Exception as e:
+        print("Erro ao pegar postagens:", e)
+        return []
+
+async def verificar_atualizacoes():
+    """Verifica e publica novas atualizações no canal do Discord."""
+    global current_post_ids
+    global cached_posts
+    
+    await bot.wait_until_ready()
+    canal = bot.get_channel(CHANNEL_ID)
+    
+    if canal is None:
+        print("Canal não encontrado ou bot ainda não está pronto para acessar canais.")
+        # --- A pausa (sleep) que você solicitou antes (caso o canal não exista) ---
+        print("sleep")
+        await asyncio.sleep(20)
+        # --- Fim da pausa (sleep) que você solicitou antes ---
+        return
+
+    # Se for a primeira execução, preenche o cache sem enviar mensagens
+    if not current_post_ids:
+        print("Primeira execução: Preenchendo cache de posts existentes...")
+        initial_posts = await fetch_posts()
+        current_post_ids = {post['id'] for post in initial_posts}
+        cached_posts = initial_posts
+        print(f"Cache preenchido com {len(current_post_ids)} postagens iniciais.")
+        await asyncio.sleep(20) # Coloca um pequeno sleep inicial
+        # --- A pausa (sleep) que você solicitou antes ---
+        print("sleep")
+        await asyncio.sleep(20)
+        # --- Fim da pausa (sleep) que você solicitou antes ---
+        return 
+
+    while True:
+        novas_postagens = await fetch_posts()
+        
+        novas_para_enviar = []
+        
+        # Encontra os posts que são novos desde a última verificação
+        for post in reversed(novas_postagens):
+            if post['id'] not in current_post_ids:
+                novas_para_enviar.append(post)
+
+        # Envia as novas postagens
+        for post in novas_para_enviar:
+            
+            # --- Personalização do Design Inspirada na Imagem ---
+            
+            descricao_formatada = ""
+            linhas_desc = post["descricao"].split('\n')
+            
+            # Formatação da descrição para simular lista/itens
+            if len(post["descricao"]) > 1024 or len(linhas_desc) > 8:
+                descricao_formatada = post["descricao"][:800] + "..."
+                descricao_formatada = f"{post['tipo'].split(' ')[1]}:\n" + \
+                                      f"{descricao_formatada}\n\n" + \
+                                      f"... {len(linhas_desc)} Pontos de Notas!\n"
+            else:
+                # Formata como lista numerada para simular o estilo de "regras"
+                for i, linha in enumerate(linhas_desc):
+                    if linha.strip(): # Ignora linhas vazias
+                        descricao_formatada += f"{i+1}.** {linha.strip()}\n"
+                
+                if len(descricao_formatada) > 4096:
+                    descricao_formatada = descricao_formatada[:4000] + "\n*(Descrição cortada...)*"
+            
+            # Cria o Embed com o estilo da imagem
+            embed = discord.Embed(
+                # Título semelhante ao cabeçalho da imagem: "# 📕 | rules!"
+                title=f"#{'🔧' if post['tipo'].startswith('Atualização') else '🎉'} | Notas de {post['tipo'].split(' ')[1]}!",
+                description=f"*Bem-vindo(a) a* {post['tipo']} *| {post['titulo']}*\n\n" + 
+                            descricao_formatada,
+                color=post['cor']
+            )
+            
+            # O set_author FOI REMOVIDO. O cabeçalho padrão do Discord mostrará que seu bot enviou.
+            
+            # Adiciona a imagem de thumbnail, se houver
+            if post["imagem"]:
+                embed.set_image(url=post["imagem"])
+                
+            # Adiciona o footer com a data
+            embed.set_footer(text=f"Publicado em: {post['data']}")
+            
+            # Envia a mensagem
+            await canal.send(embed=embed)
+            
+            # Adiciona um pequeno sleep entre o envio das notas (conforme sua regra)
+            # --- A pausa (sleep) que você solicitou entre as notas ---
+            print("sleep")
+            await asyncio.sleep(5) 
+            # --- Fim da pausa (sleep) que você solicitou entre as notas ---
+
+        # Atualiza o cache e os IDs após processar todas as novas postagens
+        if novas_para_enviar:
+            current_post_ids.update({post['id'] for post in novas_para_enviar})
+            cached_posts = novas_postagens 
+
+        # --- A pausa (sleep) que você solicitou antes ---
+        print("sleep")
+        await asyncio.sleep(20)
+        # --- Fim da pausa (sleep) que você solicitou antes ---
+
+
+@bot.event
+async def on_ready():
+    print(f"Bot conectado como {bot.user}")
+    # Inicia a tarefa de verificação
+    bot.loop.create_task(verificar_atualizacoes())
+
+# Garanta que o bot_token seja o primeiro argumento no método run
+bot.run(TOKEN)
