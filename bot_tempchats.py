@@ -1,15 +1,17 @@
-# bot_tempchats_temp.py
+# bot_tempchats_render.py
 import os
 import asyncio
 import discord
 from discord.ext import commands
 from discord import app_commands
+from aiohttp import web
 
 # --------------------------
 # Configurações
 # --------------------------
 CHANNEL_TRIGGER_ID = 1424934971277185024  # Canal gatilho
 CATEGORY_ID = 1424934711251439677         # Categoria para canais temporários
+KEEPALIVE_PORT = 8080                      # Porta para o webserver de keepalive
 
 # --------------------------
 # Intents & bot
@@ -25,6 +27,21 @@ tree = bot.tree
 # Estado global
 # --------------------------
 temp_channels = {}  # {channel_id: {"owner_id": int}}
+
+# --------------------------
+# Webserver para keepalive
+# --------------------------
+async def handle_root(request):
+    return web.Response(text="Bot ativo!")
+
+async def start_webserver():
+    app = web.Application()
+    app.add_routes([web.get('/', handle_root)])
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', KEEPALIVE_PORT)
+    await site.start()
+    print(f"Webserver iniciado em 0.0.0.0:{KEEPALIVE_PORT}")
 
 # --------------------------
 # Eventos: canais temporários de voz
@@ -103,6 +120,11 @@ async def descricao(interaction: discord.Interaction, texto: str):
 @bot.event
 async def on_ready():
     print(f"Bot conectado como {bot.user} (ID: {bot.user.id})")
+    # Inicia webserver de keepalive
+    if not hasattr(bot, 'webserver_started'):
+        asyncio.create_task(start_webserver())
+        bot.webserver_started = True
+    # Sincroniza comandos slash
     try:
         await tree.sync()
         print("Comandos sincronizados")
