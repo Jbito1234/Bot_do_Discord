@@ -1,37 +1,13 @@
-# bot_tempchats_full.py
+# bot_tempchats_temp.py
 import os
 import asyncio
-import aiohttp
-from aiohttp import web
 import discord
 from discord.ext import commands
 from discord import app_commands
-from deep_translator import GoogleTranslator
 
 # --------------------------
 # Configurações
 # --------------------------
-CONFIGURACOES = [
-    {
-        "GAME_ID": "8752798054",
-        "CHANNEL_ID": 1425085470144204861,
-        "NOME": "Roube um Brainrot",
-        "INTERVALO": 60  # segundos
-    },
-    {
-        "GAME_ID": "127742093697776",
-        "CHANNEL_ID": 1425086215643725834,
-        "NOME": "Plantas VS Brainrots",
-        "INTERVALO": 60
-    },
-    {
-        "GAME_ID": "108533757090220",
-        "CHANNEL_ID": 1425086490379161671,
-        "NOME": "Garden Tower Defense",
-        "INTERVALO": 60
-    }
-]
-
 CHANNEL_TRIGGER_ID = 1424934971277185024  # Canal gatilho
 CATEGORY_ID = 1424934711251439677         # Categoria para canais temporários
 
@@ -40,9 +16,7 @@ CATEGORY_ID = 1424934711251439677         # Categoria para canais temporários
 # --------------------------
 intents = discord.Intents.default()
 intents.guilds = True
-intents.members = True
-intents.voice_states = True
-intents.message_content = True  # necessário para comandos baseados em texto
+intents.voice_states = True  # necessário para on_voice_state_update
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
@@ -50,145 +24,7 @@ tree = bot.tree
 # --------------------------
 # Estado global
 # --------------------------
-temp_channels = {}                # {channel_id: {"owner_id": int}}
-current_post_ids_cache = {}       # {game_id: set(post_ids)}
-translation_cache = {}            # cache simples de traduções
-
-# --------------------------
-# Util: tradução sem bloquear loop
-# --------------------------
-async def traduzir_para_pt(texto: str) -> str:
-    if not texto:
-        return ""
-    if texto in translation_cache:
-        return translation_cache[texto]
-    try:
-        traducao = await asyncio.to_thread(GoogleTranslator(source='auto', target='pt').translate, texto)
-        translation_cache[texto] = traducao
-        return traducao
-    except Exception as e:
-        print("Erro na tradução:", e)
-        return texto
-
-# --------------------------
-# Webserver (útil pra keepalive)
-# --------------------------
-async def handle_root(request):
-    return web.Response(text="Bot ativo!")
-
-async def start_webserver():
-    app = web.Application()
-    app.add_routes([web.get('/', handle_root)])
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 8080)
-    await site.start()
-    print("Webserver iniciado em 0.0.0.0:8080")
-
-# --------------------------
-# Buscar posts do Roblox (assíncrono)
-# --------------------------
-async def fetch_posts(game_id: str):
-    url = f"https://games.roblox.com/v1/games/{game_id}/universe-updates?sortOrder=Desc&limit=20"
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as r:
-                if r.status != 200:
-                    print(f"Erro ao buscar posts para {game_id}: Status {r.status}")
-                    return []
-                data = await r.json()
-    except Exception as e:
-        print(f"Erro ao pegar postagens para {game_id}:", e)
-        return []
-
-    posts = []
-    for post in data.get("data") or []:
-        title_lower = (post.get("title") or "").lower()
-        if "event" in title_lower or "evento" in title_lower:
-            post_type = "🎉 Evento"
-            embed_color = discord.Color.gold()
-        else:
-            post_type = "🔧 Atualização"
-            embed_color = discord.Color.blue()
-
-        descricao_original = post.get("body") or ""
-        posts.append({
-            "id": post.get("id"),
-            "titulo": post.get("title") or "Sem título",
-            "descricao_original": descricao_original,
-            "data": post.get("created"),
-            "imagem": post.get("thumbnailUrl"),
-            "tipo": post_type,
-            "cor": embed_color
-        })
-    return posts
-
-# --------------------------
-# Verifica atualizações por jogo
-# --------------------------
-async def verificar_atualizacoes(game_id: str, channel_id: int, interval: int):
-    if game_id not in current_post_ids_cache:
-        current_post_ids_cache[game_id] = set()
-
-    await bot.wait_until_ready()
-    canal = None
-
-    # Preencher cache inicial sem enviar posts antigos
-    if not current_post_ids_cache[game_id]:
-        print(f"[{game_id}] Preenchendo cache inicial...")
-        initial_posts = await fetch_posts(game_id)
-        current_post_ids_cache[game_id] = {p['id'] for p in initial_posts}
-        print(f"[{game_id}] Cache inicial com {len(current_post_ids_cache[game_id])} posts.")
-
-    while True:
-        try:
-            if canal is None:
-                try:
-                    canal = await bot.fetch_channel(channel_id)
-                except Exception as e:
-                    print(f"Erro ao (re)buscar canal {channel_id}: {e}")
-                    canal = None
-
-            novas_postagens = await fetch_posts(game_id)
-            novas_para_enviar = [p for p in novas_postagens if p['id'] not in current_post_ids_cache[game_id]]
-
-            for post in reversed(novas_para_enviar):
-                descricao_traduzida = await traduzir_para_pt(post["descricao_original"])
-
-                # Limitar tamanho e linhas
-                linhas_desc = descricao_traduzida.split('\n')
-                if len(descricao_traduzida) > 1024 or len(linhas_desc) > 8:
-                    descricao_formatada = descricao_traduzida[:800] + "..."
-                else:
-                    descricao_formatada = ""
-                    for i, linha in enumerate(linhas_desc):
-                        if linha.strip():
-                            descricao_formatada += f"{i+1}. {linha.strip()}\n"
-
-                embed = discord.Embed(
-                    title=f"{post['tipo']} - {post['titulo']}",
-                    description=descricao_formatada or descricao_traduzida,
-                    color=post['cor']
-                )
-                if post["imagem"]:
-                    embed.set_image(url=post["imagem"])
-                embed.set_footer(text=f"Publicado em: {post.get('data')}")
-
-                if canal:
-                    try:
-                        await canal.send(embed=embed)
-                        print(f"Enviado post {post['id']} para canal {channel_id}")
-                    except Exception as e:
-                        print(f"Erro ao enviar embed para canal {channel_id}: {e}")
-                await asyncio.sleep(1)
-
-            if novas_para_enviar:
-                current_post_ids_cache[game_id].update({p['id'] for p in novas_para_enviar})
-
-        except Exception as e:
-            print(f"Erro no loop de verificação para {game_id}: {e}")
-
-        await asyncio.sleep(interval)
+temp_channels = {}  # {channel_id: {"owner_id": int}}
 
 # --------------------------
 # Eventos: canais temporários de voz
@@ -197,14 +33,15 @@ async def verificar_atualizacoes(game_id: str, channel_id: int, interval: int):
 async def on_voice_state_update(member, before, after):
     if after.channel and after.channel.id == CHANNEL_TRIGGER_ID:
         guild = member.guild
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(connect=True),
-            member: discord.PermissionOverwrite(manage_channels=True)
-        }
         category = guild.get_channel(CATEGORY_ID)
         if not category:
             print("Categoria não encontrada ou sem permissão.")
             return
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(connect=True),
+            member: discord.PermissionOverwrite(manage_channels=True)
+        }
 
         try:
             temp_channel = await guild.create_voice_channel(
@@ -266,23 +103,11 @@ async def descricao(interaction: discord.Interaction, texto: str):
 @bot.event
 async def on_ready():
     print(f"Bot conectado como {bot.user} (ID: {bot.user.id})")
-
-    # start webserver uma vez
-    if not hasattr(bot, 'webserver_started'):
-        asyncio.create_task(start_webserver())
-        bot.webserver_started = True
-
-    # sincroniza comandos de aplicativo
     try:
         await tree.sync()
         print("Comandos sincronizados")
     except Exception as e:
         print("Erro ao sincronizar comandos:", e)
-
-    # inicia monitoramento de jogos
-    for conf in CONFIGURACOES:
-        print(f"Iniciando monitoramento de {conf['NOME']} ({conf['GAME_ID']})")
-        asyncio.create_task(verificar_atualizacoes(conf["GAME_ID"], conf["CHANNEL_ID"], conf["INTERVALO"]))
 
 # --------------------------
 # Run
