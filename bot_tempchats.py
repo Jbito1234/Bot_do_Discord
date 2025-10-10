@@ -1,4 +1,4 @@
-# bot_tempchats_render.py
+# bot_tempchats_cloud.py
 import os
 import asyncio
 import discord
@@ -11,7 +11,7 @@ from aiohttp import web
 # --------------------------
 CHANNEL_TRIGGER_ID = 1424934971277185024  # Canal gatilho
 CATEGORY_ID = 1424934711251439677         # Categoria para canais temporários
-KEEPALIVE_PORT = int(os.getenv("PORT", 8080))  # Porta do Render ou fallback
+KEEPALIVE_PORT = int(os.getenv("PORT", 8080))  # Porta para webserver
 
 # --------------------------
 # Intents & bot
@@ -19,7 +19,6 @@ KEEPALIVE_PORT = int(os.getenv("PORT", 8080))  # Porta do Render ou fallback
 intents = discord.Intents.default()
 intents.guilds = True
 intents.voice_states = True
-intents.members = True  # necessário para on_voice_state_update
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
@@ -78,23 +77,18 @@ async def on_voice_state_update(member, before, after):
 async def check_empty_channel(channel: discord.VoiceChannel):
     await asyncio.sleep(5)
     while True:
-        await asyncio.sleep(10)
         try:
             if len(channel.members) == 0:
                 try:
                     await channel.delete()
-                    print(f"Canal {channel.name} deletado por estar vazio.")
                 except Exception as e:
                     print(f"Erro ao deletar canal {channel.id}: {e}")
                 temp_channels.pop(channel.id, None)
                 break
-        except discord.NotFound:
+        except Exception:
             temp_channels.pop(channel.id, None)
             break
-        except Exception as e:
-            print(f"Erro em check_empty_channel: {e}")
-            temp_channels.pop(channel.id, None)
-            break
+        await asyncio.sleep(10)
 
 # --------------------------
 # Comando slash: descricao
@@ -112,8 +106,7 @@ async def descricao(interaction: discord.Interaction, texto: str):
                 try:
                     await channel.edit(topic=texto)
                     await interaction.response.send_message(f'Descrição definida: {texto}', ephemeral=True)
-                except Exception as e:
-                    print(f"Erro ao editar canal {channel.id}: {e}")
+                except Exception:
                     await interaction.response.send_message('Erro ao editar a descrição do canal.', ephemeral=True)
             else:
                 await interaction.response.send_message('Não foi possível encontrar seu canal.', ephemeral=True)
@@ -127,11 +120,9 @@ async def descricao(interaction: discord.Interaction, texto: str):
 @bot.event
 async def on_ready():
     print(f"Bot conectado como {bot.user} (ID: {bot.user.id})")
-    # Inicia webserver de keepalive
     if not hasattr(bot, 'webserver_started'):
         asyncio.create_task(start_webserver())
         bot.webserver_started = True
-    # Sincroniza comandos slash
     try:
         await tree.sync()
         print("Comandos sincronizados")
@@ -139,11 +130,29 @@ async def on_ready():
         print("Erro ao sincronizar comandos:", e)
 
 # --------------------------
-# Run
+# Inicialização segura com retry
 # --------------------------
-if __name__ == "__main__":
+async def start_bot():
+    retry_delay = 60  # segundos
     TOKEN = os.getenv("DISCORD_TOKEN")
     if not TOKEN:
         print("ERRO: variável de ambiente DISCORD_TOKEN não encontrada.")
-    else:
-        bot.run(TOKEN)
+        return
+
+    while True:
+        try:
+            await bot.start(TOKEN)
+        except discord.HTTPException as e:
+            print("Erro HTTP ou rate limit detectado:", e)
+            print(f"Reconectando em {retry_delay}s...")
+            await asyncio.sleep(retry_delay)
+        except Exception as e:
+            print("Erro inesperado:", e)
+            print(f"Reconectando em {retry_delay}s...")
+            await asyncio.sleep(retry_delay)
+
+# --------------------------
+# Run
+# --------------------------
+if __name__ == "__main__":
+    asyncio.run(start_bot())
