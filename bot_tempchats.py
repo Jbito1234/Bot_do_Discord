@@ -148,9 +148,6 @@ async def main():
 # ===============================
 # Roda tudo
 # ===============================
-# ===============================
-# Roda tudo
-# ===============================
 if __name__ == "__main__":
     try:
         asyncio.run(main())
@@ -158,11 +155,3 @@ if __name__ == "__main__":
         print("Encerrado pelo usuário.")
     except Exception as e:
         print(f"Ocorreu um erro fatal: {e}")
-
-### Próximos Passos Essenciais:
-
-1.  **Substitua os IDs:** Troque o `LOBBY_CHANNEL_ID` e o `TARGET_CATEGORY_ID` pelos IDs reais do seu servidor.
-2.  **Permissões do Bot:** Certifique-se de que o bot tenha a permissão **Gerenciar Canais** no servidor e na categoria alvo, pois ele precisa criar e deletar canais.
-3.  **Intent `voice_states`:** Observe que adicionei explicitamente `intents.voice_states = True`, que é **essencial** para que o bot receba os eventos de entrada e saída de canais de voz.
-
-Com o código acima, o bot criará um chat de voz chamado `Chat de [Nome do Usuário]` na categoria que você especificar e o deletará automaticamente quando o último usuário sair.
