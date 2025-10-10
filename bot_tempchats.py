@@ -8,9 +8,8 @@ import os
 # Configurações Essenciais
 # ===============================
 # >>>>>> MUDAR AQUI <<<<<<
-LOBBY_CHANNEL_ID = 123456789012345678    # ID do canal de voz 'Lobby' que aciona a criação
-TARGET_CATEGORY_ID = 987654321098765432  # ID da categoria onde os canais TEMPORÁRIOS serão criados
-# >>>>>> MUDAR AQUI <<<<<<
+LOBBY_CHANNEL_ID = 1424934971277185024    # ID do canal de voz 'Lobby' que aciona a criação
+TARGET_CATEGORY_ID = 1424934711251439677  # ID da categoria onde os canais TEMPORÁRIOS serão criados
 
 BOT_TOKEN = os.getenv("DISCORD_TOKEN") 
 
@@ -149,6 +148,9 @@ async def main():
 # ===============================
 # Roda tudo
 # ===============================
+# ===============================
+# Roda tudo
+# ===============================
 if __name__ == "__main__":
     try:
         asyncio.run(main())
@@ -156,7 +158,6 @@ if __name__ == "__main__":
         print("Encerrado pelo usuário.")
     except Exception as e:
         print(f"Ocorreu um erro fatal: {e}")
-```eof
 
 ### Próximos Passos Essenciais:
 
