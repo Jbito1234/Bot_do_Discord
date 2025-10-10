@@ -8,7 +8,7 @@ import os # Boas práticas: use para carregar o token de forma segura
 # Configurações do bot
 # ===============================
 # Define o token do bot. É recomendado usar variáveis de ambiente (os.getenv).
-BOT_TOKEN = "SEU_TOKEN_DO_BOT_AQUI" # <-- COLOQUE SEU TOKEN REAL AQUI
+BOT_TOKEN = "DISCORD_TOKEN" # <-- COLOQUE SEU TOKEN REAL AQUI
 
 intents = discord.Intents.default()
 # Garante que as permissões necessárias estão ativas
