@@ -7,7 +7,7 @@ import os
 # ===============================
 # Configurações Essenciais
 # ===============================
-# >>>>>> MUDAR AQUI <<<<<<
+# IDs fornecidos pelo usuário
 LOBBY_CHANNEL_ID = 1424934971277185024    # ID do canal de voz 'Lobby' que aciona a criação
 TARGET_CATEGORY_ID = 1424934711251439677  # ID da categoria onde os canais TEMPORÁRIOS serão criados
 
@@ -17,7 +17,8 @@ intents = discord.Intents.default()
 intents.guilds = True
 intents.messages = True
 intents.message_content = True
-intents.voice_states = True # ESSENCIAL: Precisa deste intent para detectar entradas e saídas de voz
+# ESSENCIAL: Precisa deste intent para detectar entradas e saídas de voz
+intents.voice_states = True 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ===============================
@@ -59,7 +60,7 @@ async def on_ready():
     print("-" * 30)
 
 # ===============================
-# Lógica do Chat de Voz Temporário (NOVO)
+# Lógica do Chat de Voz Temporário
 # ===============================
 @bot.event
 async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
