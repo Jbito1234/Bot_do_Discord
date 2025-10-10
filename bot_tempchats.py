@@ -2,19 +2,23 @@ import discord
 from discord.ext import commands
 from aiohttp import web
 import asyncio
-import os # Boas práticas: use para carregar o token de forma segura
+import os 
 
 # ===============================
-# Configurações do bot
+# Configurações Essenciais
 # ===============================
-# Define o token do bot. É recomendado usar variáveis de ambiente (os.getenv).
-BOT_TOKEN = os.getenv("DISCORD_TOKEN") # <-- COLOQUE SEU TOKEN REAL AQUI
+# >>>>>> MUDAR AQUI <<<<<<
+LOBBY_CHANNEL_ID = 123456789012345678    # ID do canal de voz 'Lobby' que aciona a criação
+TARGET_CATEGORY_ID = 987654321098765432  # ID da categoria onde os canais TEMPORÁRIOS serão criados
+# >>>>>> MUDAR AQUI <<<<<<
+
+BOT_TOKEN = os.getenv("DISCORD_TOKEN") 
 
 intents = discord.Intents.default()
-# Garante que as permissões necessárias estão ativas
 intents.guilds = True
 intents.messages = True
 intents.message_content = True
+intents.voice_states = True # ESSENCIAL: Precisa deste intent para detectar entradas e saídas de voz
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ===============================
@@ -29,11 +33,9 @@ async def start_webserver():
     app = web.Application()
     app.add_routes([web.get("/", handle)])
     
-    # Prepara o executor do aplicativo
     runner = web.AppRunner(app)
     await runner.setup()
     
-    # Configura o site na porta 10000
     site = web.TCPSite(runner, "0.0.0.0", 10000)
     await site.start()
     
@@ -45,7 +47,6 @@ async def start_webserver():
     except asyncio.CancelledError:
         pass
     finally:
-        # Limpeza ao parar a tarefa
         await runner.cleanup()
         print("Webserver desligado.")
 
@@ -59,6 +60,66 @@ async def on_ready():
     print("-" * 30)
 
 # ===============================
+# Lógica do Chat de Voz Temporário (NOVO)
+# ===============================
+@bot.event
+async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+    
+    # --- 1. Lógica de DELEÇÃO ---
+    # Verifica se o usuário saiu de um canal (before.channel existe)
+    if before.channel and before.channel.id != LOBBY_CHANNEL_ID:
+        # Verifica se o canal que ele saiu ficou vazio
+        if len(before.channel.members) == 0:
+            # Verifica se o canal está na categoria correta para ser deletado
+            if before.channel.category_id == TARGET_CATEGORY_ID:
+                print(f"Canal vazio detectado: {before.channel.name}. Deletando em 5 segundos...")
+                
+                # Atraso antes de deletar (conforme instrução)
+                await asyncio.sleep(5) 
+                
+                try:
+                    await before.channel.delete()
+                    print(f"Canal {before.channel.name} deletado com sucesso.")
+                except discord.Forbidden:
+                    print("ERRO: Não tenho permissão para deletar este canal.")
+                return
+
+    # --- 2. Lógica de CRIAÇÃO ---
+    # Verifica se o usuário entrou em um novo canal (after.channel existe)
+    if after.channel and after.channel.id == LOBBY_CHANNEL_ID:
+        guild = member.guild
+        category = discord.utils.get(guild.categories, id=TARGET_CATEGORY_ID)
+        
+        if not category:
+            print(f"ERRO: Categoria com ID {TARGET_CATEGORY_ID} não encontrada. Verifique as configurações.")
+            # Move o usuário de volta se a categoria estiver errada
+            await asyncio.sleep(1) # Atraso (conforme instrução)
+            await member.move_to(None)
+            return
+
+        new_channel_name = f"Chat de {member.display_name}"
+        
+        # Atraso antes de criar o canal (conforme instrução)
+        await asyncio.sleep(1) 
+        
+        try:
+            # Cria o novo canal de voz na categoria especificada
+            new_channel = await guild.create_voice_channel(
+                name=new_channel_name,
+                category=category
+            )
+            print(f"Canal temporário criado: {new_channel.name}")
+            
+            # Move o usuário para o novo canal
+            await asyncio.sleep(0.5) # Atraso (conforme instrução)
+            await member.move_to(new_channel)
+            
+        except discord.Forbidden:
+            print("ERRO: O bot não tem permissão para criar ou mover canais na categoria.")
+        except Exception as e:
+            print(f"Erro ao criar/mover canal: {e}")
+
+# ===============================
 # Exemplo de comando
 # ===============================
 @bot.command()
@@ -68,30 +129,21 @@ async def ping(ctx):
     await ctx.send(f"Pong! Latência: **{latency_ms}ms**")
 
 # ===============================
-# Função principal - Correção aqui!
+# Função principal
 # ===============================
 async def main():
-    # Usamos asyncio.gather para executar o bot e o webserver CONCORRENTEMENTE
-    # O bot.start() é a tarefa principal que mantém o loop de eventos ativo.
-    
-    # Garante que o token não seja o placeholder
-    if BOT_TOKEN == "SEU_TOKEN_DO_BOT_AQUI":
-        print("ERRO: Por favor, substitua 'SEU_TOKEN_DO_BOT_AQUI' pelo token real do seu bot.")
+    if BOT_TOKEN is None:
+        print("ERRO FATAL: Variável de ambiente 'DISCORD_TOKEN' não encontrada.")
+        print("Por favor, defina o token do seu bot como uma variável de ambiente.")
         return
 
-    # O servidor web será iniciado como uma tarefa em segundo plano.
-    # O bot.start() é o await que irá rodar indefinidamente.
     webserver_task = asyncio.create_task(start_webserver())
     
     try:
-        # Inicia o bot Discord. Esta linha bloqueará até que o bot seja encerrado.
         await bot.start(BOT_TOKEN)
     finally:
-        # Se o bot cair, cancele a tarefa do webserver também.
         webserver_task.cancel()
-        # Aguarde para garantir que o cancelamento seja processado.
         await asyncio.gather(webserver_task, return_exceptions=True)
-        
         print("Aplicação principal encerrada.")
 
 # ===============================
@@ -104,3 +156,12 @@ if __name__ == "__main__":
         print("Encerrado pelo usuário.")
     except Exception as e:
         print(f"Ocorreu um erro fatal: {e}")
+```eof
+
+### Próximos Passos Essenciais:
+
+1.  **Substitua os IDs:** Troque o `LOBBY_CHANNEL_ID` e o `TARGET_CATEGORY_ID` pelos IDs reais do seu servidor.
+2.  **Permissões do Bot:** Certifique-se de que o bot tenha a permissão **Gerenciar Canais** no servidor e na categoria alvo, pois ele precisa criar e deletar canais.
+3.  **Intent `voice_states`:** Observe que adicionei explicitamente `intents.voice_states = True`, que é **essencial** para que o bot receba os eventos de entrada e saída de canais de voz.
+
+Com o código acima, o bot criará um chat de voz chamado `Chat de [Nome do Usuário]` na categoria que você especificar e o deletará automaticamente quando o último usuário sair.
