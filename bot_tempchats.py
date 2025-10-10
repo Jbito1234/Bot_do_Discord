@@ -11,14 +11,15 @@ from aiohttp import web
 # --------------------------
 CHANNEL_TRIGGER_ID = 1424934971277185024  # Canal gatilho
 CATEGORY_ID = 1424934711251439677         # Categoria para canais temporários
-KEEPALIVE_PORT = 8080                      # Porta para o webserver de keepalive
+KEEPALIVE_PORT = int(os.getenv("PORT", 8080))  # Porta do Render ou fallback
 
 # --------------------------
 # Intents & bot
 # --------------------------
 intents = discord.Intents.default()
 intents.guilds = True
-intents.voice_states = True  # necessário para on_voice_state_update
+intents.voice_states = True
+intents.members = True  # necessário para on_voice_state_update
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
@@ -77,18 +78,23 @@ async def on_voice_state_update(member, before, after):
 async def check_empty_channel(channel: discord.VoiceChannel):
     await asyncio.sleep(5)
     while True:
+        await asyncio.sleep(10)
         try:
             if len(channel.members) == 0:
                 try:
                     await channel.delete()
+                    print(f"Canal {channel.name} deletado por estar vazio.")
                 except Exception as e:
                     print(f"Erro ao deletar canal {channel.id}: {e}")
                 temp_channels.pop(channel.id, None)
                 break
-        except Exception:
+        except discord.NotFound:
             temp_channels.pop(channel.id, None)
             break
-        await asyncio.sleep(10)
+        except Exception as e:
+            print(f"Erro em check_empty_channel: {e}")
+            temp_channels.pop(channel.id, None)
+            break
 
 # --------------------------
 # Comando slash: descricao
@@ -106,7 +112,8 @@ async def descricao(interaction: discord.Interaction, texto: str):
                 try:
                     await channel.edit(topic=texto)
                     await interaction.response.send_message(f'Descrição definida: {texto}', ephemeral=True)
-                except Exception:
+                except Exception as e:
+                    print(f"Erro ao editar canal {channel.id}: {e}")
                     await interaction.response.send_message('Erro ao editar a descrição do canal.', ephemeral=True)
             else:
                 await interaction.response.send_message('Não foi possível encontrar seu canal.', ephemeral=True)
